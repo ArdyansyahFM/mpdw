@@ -1,2 +1,2 @@
 # mpdw
-Metode Peramalan Deret Waktu 2025
+Matakuliah Metode Peramalan Deret Waktu semester ganjil 2025/2026
