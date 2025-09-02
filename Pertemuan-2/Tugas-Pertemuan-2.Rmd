@@ -1,0 +1,95 @@
+---
+title: "Pertemuan 2"
+author: "Fahmim"
+date: "2025-09-02"
+output: html_document
+---
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(forecast)
+library(readxl)
+```
+
+```{r}
+dataBagas = read_excel("E:/(1) Projects/Semester 5/Metode Peramalan Deret Waktu/Data MPDWW.xlsx")
+head(dataBagas)
+dataFahmi = dataBagas[541:720, ]
+head(dataFahmi)
+```
+
+```{r}
+# Mengubah data menjadi objek time series (ts)
+ts_Fahmi <- ts(dataFahmi$CO2, start = c(31, 1), frequency = 12)
+
+
+# Membuat Plot data Asli
+autoplot(ts_Fahmi, ts.colour = 'green') +
+  ggtitle("Plot Data Time Series CO2 (Periode 541-720)") +
+  xlab("Tahun") +
+  ylab("Konsentrasi CO2") +
+  theme_bw()
+```
+
+## Pemulusan data
+
+```{r}
+# METODE 1: Simple Moving Average (SMA)
+SMA3 <- ma(ts_Fahmi, order = 3)
+
+# METODE 2: Double Moving Average (DMA)
+DMA3 <- ma(SMA3, order = 3)
+
+# METODE 3: Single Exponential Smoothing (SES)
+SESmodel <- ses(ts_Fahmi, h = 12)
+
+# METODE 4: Double Exponential Smoothing (DES) / Holt's Method
+Holts <- holt(ts_Fahmi, h = 12)
+
+# --- METODE 5: Holt-Winters Method ---
+HwModelAdditive <- hw(ts_Fahmi, seasonal = "additive", h = 24)
+
+# Plotting semua hasil
+autoplot(ts_Fahmi, series = "Data Asli", ts.colour = 'blue', size = 1) +
+  autolayer(fitted(SESmodel), series = "SES") +
+  autolayer(fitted(Holts), series = "DES (Holt)") +
+  autolayer(fitted(HwModelAdditive), series = "Holt-Winters") +
+  ggtitle("Perbandingan Metode Pemulusan Eksponensial") +
+  xlab("Tahun") + ylab("Konsentrasi CO2") +
+  labs(colour = "Legenda") + theme_bw()
+```
+## tabel perbandingan
+
+```{r}
+hitung_semua_metrik <- function(data_asli, hasil_prediksi) {
+  indeks_valid <- !is.na(hasil_prediksi)
+  data_asli <- data_asli[indeks_valid]
+  hasil_prediksi <- hasil_prediksi[indeks_valid]
+  
+  # Hitung residuals (error)
+  residuals <- data_asli - hasil_prediksi
+  
+  # Hitung metrik
+  sse <- sum(residuals^2)
+  mse <- mean(residuals^2)
+  rmse <- sqrt(mse)
+  mape <- mean(abs(residuals / data_asli)) * 100
+  
+  return(c(SSE = sse, MSE = mse, RMSE = rmse, MAPE = mape))
+}
+
+# Mengumpulkan hasil dari setiap metode
+metrik_sma3 <- hitung_semua_metrik(ts_Fahmi, SMA3)
+metrik_dma3 <- hitung_semua_metrik(ts_Fahmi, DMA3)
+metrik_ses <- hitung_semua_metrik(ts_Fahmi, fitted(SESmodel))
+metrik_des <- hitung_semua_metrik(ts_Fahmi, fitted(Holts))
+metrik_hw <- hitung_semua_metrik(ts_Fahmi, fitted(HwModelAdditive))
+
+# Membuat tabel perbandingan akhir
+tabel_perbandingan <- rbind(metrik_sma3, metrik_dma3, metrik_ses, metrik_des, metrik_hw)
+rownames(tabel_perbandingan) <- c("SMA (n=3)", "DMA (n=3)", "SES", "DES (Holt)", "Holt-Winters Additive")
+
+# Menampilkan tabel perbandingan
+print(round(tabel_perbandingan, 4))
+```
