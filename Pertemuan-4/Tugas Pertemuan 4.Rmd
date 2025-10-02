@@ -1,5 +1,475 @@
 ---
-title: "Tugas Pertemuan 4"
-output: html_document
+title: "Latihan Pertemuan 4"
+author: "Fahmim"
+date: "2025-09-24"
+output: 
+  html_document:
+    theme: cerulean
+    toc: true
+    toc_float: true
 ---
 
+# Library yang digunakan
+```{r}
+library(TSA)
+library(tseries)
+library(urca)
+library(ggplot2)
+library(gridExtra)
+library(dplyr)
+library(tidyr)
+library(reshape2)
+```
+# Proses MA(2)
+## 1. Pembangkitan data
+```{r}
+set.seed(040) #seed berdasarkan NIM G1401231040
+n <- 300
+theta1 <- 0.4
+theta2 <- 0.6
+sd_eps <- 1
+```
+### Manual
+```{r}
+eps <- rnorm(n + 10, mean = 0, sd = sd_eps)
+filter_coefs <- c(1, theta1, theta2)
+y_manual_full <- stats::filter(eps, filter = filter_coefs, method = "convolution", sides = 1)
+start_index <- 11
+y_manual <- as.numeric(y_manual_full[start_index:(start_index + n - 1)])
+```
+### Dengan `arima.sim`
+```{r}
+y_arima_sim <- as.numeric(arima.sim(model = list(ma = c(theta1, theta2)), n = n, sd = sd_eps))
+```
+
+## 2. Pembuatan plot time series, plot ACF, plot PACF, plot EACF, serta identifikasi ke-stationeran data tersebut
+### Pembuatan object time series
+```{r}
+y_manual_ts <- ts(y_manual)
+y_arima_ts <- ts(y_arima_sim)
+```
+### Plot series (ggplot)
+```{r}
+plot_series <- function(y_ts, title = "Time Series"){
+df <- data.frame(time = as.numeric(time(y_ts)), y = as.numeric(y_ts))
+ggplot(df, aes(time, y)) + geom_line() + labs(title = title, x = "t", y = "y_t") + theme_minimal()
+}
+
+
+p1 <- plot_series(y_manual_ts, "MA(2) - Manual")
+p2 <- plot_series(y_arima_ts, "MA(2) - arima.sim")
+```
+### ACF & PACF
+```{r}
+# ACF & PACF untuk manual
+acf(y_manual_ts, main = "ACF - Manual")
+pacf(y_manual_ts, main = "PACF - Manual")
+
+
+# ACF & PACF untuk arima.sim
+acf(y_arima_ts, main = "ACF - arima.sim")
+pacf(y_arima_ts, main = "PACF - arima.sim")
+```
+### EACF
+```{r}
+cat("EACF untuk data manual:\n")
+eacf(y_manual_ts)
+cat("\nEACF untuk data arima.sim:\n")
+eacf(y_arima_ts)
+```
+### Indentifikasi stasioneritas
+#### ADF test
+```{r}
+adf_manual <- adf.test(y_manual_ts)
+adf_arima <- adf.test(y_arima_ts)
+```
+#### kpps test
+```{r}
+kpss_manual <- tryCatch(kpss.test(y_manual_ts), error = function(e) e)
+kpss_arima <- tryCatch(kpss.test(y_arima_ts), error = function(e) e)
+
+
+cat("ADF test (manual):\n")
+print(adf_manual)
+cat("KPSS test (manual):\n")
+print(kpss_manual)
+
+
+cat("ADF test (arima.sim):\n")
+print(adf_arima)
+cat("KPSS test (arima.sim):\n")
+print(kpss_arima)
+
+
+cat("\nInterpretasi: Untuk ADF, hipotesis nol = unit root (non-stasioner). p-value < 0.05 => tolak H0 => stasioner.\n")
+cat("Untuk KPSS, hipotesis nol = stasioner. p-value < 0.05 => tolak H0 => non-stasioner.\n")
+```
+
+## 3. Pembuatan scatter plot antara $Y_t$ dengan $Y_{t-k}$ dengan k = 1,2,3
+### Scatterplot Y_t vs Y_{t-k} untuk k=1,2,3
+```{r}
+make_lag_scatter <- function(y_ts, maxlag = 3, title_prefix = ""){
+df <- data.frame(y = as.numeric(y_ts))
+for (k in 1:maxlag) df[[paste0("lag", k)]] <- dplyr::lag(df$y, k)
+plots <- list()
+for (k in 1:maxlag){
+plots[[k]] <- ggplot(df, aes_string(x = paste0("lag", k), y = "y")) +
+geom_point(alpha = 0.6) + geom_smooth(method = "lm", se = FALSE) +
+labs(title = paste0(title_prefix, " Y_t vs Y_{t-", k, "}"), x = paste0("Y_{t-", k, "}"), y = "Y_t") +
+theme_minimal()
+}
+return(plots)
+}
+
+
+sc_manual <- make_lag_scatter(y_manual_ts, 3, "Manual:")
+sc_arima <- make_lag_scatter(y_arima_ts, 3, "arima.sim:")
+```
+### Tampilkan 3 scatter untuk manual
+```{r}
+grid.arrange(sc_manual[[1]], sc_manual[[2]], sc_manual[[3]], ncol = 3)
+```
+
+### Tampilkan 3 scatter dan untuk `arima.sim`
+```{r}
+grid.arrange(sc_arima[[1]], sc_arima[[2]], sc_arima[[3]], ncol = 3)
+```
+
+
+## 4. Penghitungan Autokorelasi data bangkitan dan teoritis
+### Manual dari acf
+```{r}
+samp_acf_manual <- acf(y_manual_ts, plot = FALSE)$acf[,1,1]
+samp_acf_arima <- acf(y_arima_ts, plot = FALSE)$acf[,1,1]
+```
+### Teoritis
+```{r}
+sigma2 <- sd_eps^2
+gamma0 <- sigma2 * (1 + theta1^2 + theta2^2)
+gamma1 <- sigma2 * (theta1 + theta1 * theta2)
+gamma2 <- sigma2 * (theta2)
+rho0 <- 1
+rho1 <- gamma1 / gamma0
+rho2 <- gamma2 / gamma0
+rho_rest <- rep(0, 10)
+theor_acf <- c(rho0, rho1, rho2, rho_rest)
+```
+### Summary
+```{r}
+lags_to_show <- 0:6
+cat("Perbandingan ACF (lag, sampel manual, sampel arima.sim, teoritis):\n")
+res_table <- data.frame(
+lag = lags_to_show,
+sampel_manual = samp_acf_manual[lags_to_show + 1],
+sampel_arima = samp_acf_arima[lags_to_show + 1],
+teoritis = theor_acf[lags_to_show + 1]
+)
+print(round(res_table, 4))
+```
+#### Plot perbandingan teoritis vs manual (hingga lag 10)
+```{r}
+lagvec <- 0:10
+df_plot_acf <- data.frame(
+lag = lagvec,
+teoritis = c(theor_acf[1:(length(lagvec))]),
+sampel_manual = samp_acf_manual[1:(length(lagvec))],
+sampel_arima = samp_acf_arima[1:(length(lagvec))]
+)
+
+df_melt <- pivot_longer(df_plot_acf, cols = c("teoritis", "sampel_manual", "sampel_arima"), names_to = "type", values_to = "acf")
+
+
+ggplot(df_melt, aes(x = lag, y = acf, linetype = type)) + geom_point() + geom_line() +
+labs(title = "Perbandingan ACF: Teoritis vs Sampel", x = "lag", y = "ACF") + theme_minimal()
+```
+
+## Interpretasi
+Sesuai sifat MA(2), ACF hanya tidak nol sampai lag ke-2 lalu langsung nol untuk lag > 2. Lag 0 = 1 (karena autokorelasi selalu 1). Lag 1 dan 2 bernilai positif (sesuai $\theta_1$=0.4 dan $\theta_2$=0.6). Lag 3 ke atas = 0.
+
+Sampel manual (dotted) dan sampel arima.sim (solid) dari data simulasi 300 observasi bentuknya memang mirip dengan teoritis, di mana Lag 1 dan 2 cukup besar dan positif serta Lag 3 dan seterusnya mendekati nol, walau tidak tepat nol (karena fluktuasi random sampling).
+
+Secara keseluruhan, pola ACF hasil simulasi cukup dekat dengan teori MA(2). Artinya kode simulasi berjalan dengan benar. Fluktuasi pada lag > 2 (kadang sedikit negatif atau positif) itu wajar karena ukuran sampel terbatas (n=300). Jika n diperbesar (misal 10.000), kurva sampel akan makin mendekati garis teoritis. Dari ACF sampel terlihat cut-off pada lag ke-2 (nilai signifikan hanya sampai lag 2). Ini sesuai dengan ciri khas MA(q): ACF terpotong (cut-off) setelah lag q, sedangkan PACF memudar secara bertahap.
+
+Kesimpulannya, data yang dibangkitkan memang menyerupai MA(2) dengan $\theta_1$=0.4 dan $\theta_2$=0.6. ACF teoritis dan sampel konsisten: hanya lag 1 dan 2 yang signifikan. Deviasi kecil setelah lag 2 adalah efek sampel terbatas, bukan kesalahan model.
+
+# Proses AR(2)
+## 1. Pembangkitan data
+```{r}
+set.seed(040) #sesuai NIM
+n <- 300
+phi1 <- 0.5
+phi2 <- 0.2
+sd_eps <- 1
+```
+
+### Manual
+```{r}
+eps <- rnorm(n + 50, mean = 0, sd = sd_eps)
+y_manual <- numeric(n + 50)
+y_manual[1:2] <- 0
+for (t in 3:(n + 50)) {
+y_manual[t] <- phi1 * y_manual[t-1] + phi2 * y_manual[t-2] + eps[t]
+}
+y_manual <- y_manual[51:(n + 50)]
+```
+
+### Dengan `arima.sim`
+```{r}
+y_arima_sim <- as.numeric(arima.sim(model = list(ar = c(phi1, phi2)), n = n, sd = sd_eps))
+
+
+# Bungkus jadi ts
+y_manual_ts <- ts(y_manual)
+y_arima_ts <- ts(y_arima_sim)
+```
+
+## 2. Pembuatan plot time series, plot ACF, plot PACF, plot EACF, serta identifikasi ke-stationeran data tersebut
+```{r}
+plot_series <- function(y_ts, title = "Time Series"){
+df <- data.frame(time = as.numeric(time(y_ts)), y = as.numeric(y_ts))
+ggplot(df, aes(time, y)) + geom_line() + labs(title = title, x = "t", y = "y_t") + theme_minimal()
+}
+
+
+p1 <- plot_series(y_manual_ts, "AR(2) - Manual")
+p2 <- plot_series(y_arima_ts, "AR(2) - arima.sim")
+
+
+grid.arrange(p1, p2, ncol = 1)
+```
+
+### ACF & PACF
+```{r}
+acf(y_manual_ts, main = "ACF - Manual")
+pacf(y_manual_ts, main = "PACF - Manual")
+acf(y_arima_ts, main = "ACF - arima.sim")
+pacf(y_arima_ts, main = "PACF - arima.sim")
+```
+
+### EACF
+```{r}
+cat("EACF - Manual:\n")
+eacf(y_manual_ts)
+cat("\nEACF - arima.sim:\n")
+eacf(y_arima_ts)
+```
+
+### Indentifikasi stasioneritas
+#### ADF test
+```{r}
+adf_manual <- adf.test(y_manual_ts)
+adf_arima <- adf.test(y_arima_ts)
+cat("ADF test (manual):\n")
+print(adf_manual)
+cat("KPSS test (manual):\n")
+print(kpss_manual)
+```
+#### kpps test
+```{r}
+kpss_manual <- tryCatch(kpss.test(y_manual_ts), error = function(e) e)
+kpss_arima <- tryCatch(kpss.test(y_arima_ts), error = function(e) e)
+cat("ADF test (arima.sim):\n")
+print(adf_arima)
+cat("KPSS test (arima.sim):\n")
+print(kpss_arima)
+
+cat("\nInterpretasi: AR(2) stasioner jika akar polinomial karakteristik 1 - phi1*z - phi2*z^2 = 0 berada di luar lingkaran satuan. Dengan phi1=0.5, phi2=0.2, syarat stasioneritas terpenuhi.\n")
+```
+
+## 3. Pembuatan scatter plot antara $Y_t$ dengan $Y_{t-k}$ dengan k = 1,2,3
+### Scatterplot Y_t vs Y_{t-k} untuk k=1,2,3
+```{r}
+make_lag_scatter <- function(y_ts, maxlag = 3, title_prefix = ""){
+df <- data.frame(y = as.numeric(y_ts))
+for (k in 1:maxlag) df[[paste0("lag", k)]] <- dplyr::lag(df$y, k)
+plots <- list()
+for (k in 1:maxlag){
+plots[[k]] <- ggplot(df, aes_string(x = paste0("lag", k), y = "y")) +
+geom_point(alpha = 0.6) + geom_smooth(method = "lm", se = FALSE) +
+labs(title = paste0(title_prefix, " Y_t vs Y_{t-", k, "}"), x = paste0("Y_{t-", k, "}"), y = "Y_t") +
+theme_minimal()
+}
+return(plots)
+}
+```
+### Tampilkan 3 scatter untuk manual
+```{r}
+sc_manual <- make_lag_scatter(y_manual_ts, 3, "Manual:")
+grid.arrange(sc_manual[[1]], sc_manual[[2]], sc_manual[[3]], ncol = 3)
+```
+
+### Tampilkan 3 scatter untuk `arima.sim`
+```{r}
+sc_arima <- make_lag_scatter(y_arima_ts, 3, "arima.sim:")
+grid.arrange(sc_arima[[1]], sc_arima[[2]], sc_arima[[3]], ncol = 3)
+```
+
+## 4. Penghitungan Autokorelasi data bangkitan dan teoritis
+### Manual dari acf
+```{r}
+afc_manual <- acf(y_manual_ts, plot = FALSE)$acf[,1,1]
+afc_arima <- acf(y_arima_ts, plot = FALSE)$acf[,1,1]
+maxlag <- 10
+rho <- numeric(maxlag+1)
+rho[1] <- 1
+rho[2] <- phi1 / (1 - phi2)
+rho[3] <- phi1*rho[2] + phi2*rho[1]
+for (k in 4:(maxlag+1)){
+rho[k] <- phi1*rho[k-1] + phi2*rho[k-2]
+}
+lags_to_show <- 0:maxlag
+res_table <- data.frame(
+lag = lags_to_show,
+sampel_manual = afc_manual[lags_to_show+1],
+sampel_arima = afc_arima[lags_to_show+1],
+teoritis = rho
+)
+
+
+cat("Perbandingan ACF (lag, sampel manual, sampel arima.sim, teoritis):\n")
+print(round(res_table, 4))
+
+
+df_melt <- pivot_longer(res_table, cols = c("sampel_manual", "sampel_arima", "teoritis"), names_to = "type", values_to = "acf")
+
+
+ggplot(df_melt, aes(x = lag, y = acf, linetype = type)) + geom_point() + geom_line() +
+labs(title = "Perbandingan ACF: Teoritis vs Sampel (AR(2))", x = "lag", y = "ACF") + theme_minimal()
+```
+
+## Interpretasi
+Garis teoritis (putus-putus panjang) menunjukkan pola ACF yang menurun secara bertahap (tail-off), sesuai dengan sifat AR(2). Hasil simulasi (manual & arima.sim) juga mengikuti pola ini, meskipun terdapat variasi karena faktor sampel (jumlah data hanya 300).
+
+Sampel_arima (garis solid) lebih dekat dengan kurva teoritis dibandingkan sampel_manual (garis putus-putus pendek). Hal ini wajar karena arima.sim menggunakan algoritma yang langsung menerapkan struktur AR(2), sedangkan simulasi manual lebih rentan pada error implementasi atau efek awal (initial values).
+
+Pada lag 1 dan 2, nilai ACF sampel cukup dekat dengan nilai teoritis (sekitar 0.5–0.6). Perbedaan kecil yang terlihat merupakan sampling variability, karena sampel finite tidak selalu sama dengan ekspektasi teoritis.
+
+Pada lag menengah (4-6) terjadi sedikit deviasi, terutama pada sampel_manual yang cenderung underestimate dibanding teori. Namun, arah tren (semakin menurun mendekati nol) tetap sesuai dengan pola AR(2).
+
+Pada lag lebih tinggi (≥7), Deviasi semakin besar, beberapa nilai bahkan berfluktuasi di sekitar nol (ada yang negatif). Ini normal, karena pada lag tinggi jumlah pasangan observasi yang bisa dihitung semakin sedikit → estimasi autokorelasi jadi lebih tidak stabil.
+
+Baik simulasi manual maupun dengan arima.sim berhasil mereplikasi sifat ACF AR(2), yaitu tail-off secara perlahan. Perbedaan dengan kurva teoritis sebagian besar akibat variasi sampel (finite sample effect), bukan karena model salah. arima.sim menghasilkan estimasi ACF yang lebih konsisten mendekati teoritis dibandingkan metode manual.
+
+Proses ARMA(2,2)
+## 1. Pembangkitan data
+```{r}
+set.seed(040)
+n <- 300
+phi <- c(0.5, 0.2)     # parameter AR(2) 
+theta <- c(0.4, 0.6)   # parameter MA(2) 
+```
+
+### Manual
+```{r}
+e <- rnorm(n + 100, mean = 0, sd = 1)  # extra 100 utk burn-in
+y <- numeric(length = n + 100)
+
+for(t in 3:(n+100)){
+  y[t] <- phi[1]*y[t-1] + phi[2]*y[t-2] + e[t] + theta[1]*e[t-1] + theta[2]*e[t-2]
+}
+
+y_manual <- ts(y[101:(n+100)])
+```
+
+### Dengan `arima.sim`
+```{r}
+y_arima <- arima.sim(model = list(ar = phi, ma = theta), n = n)
+```
+
+## 2. Pembuatan plot time series, plot ACF, plot PACF, plot EACF, serta identifikasi ke-stationeran data tersebut
+### Plot series (ggplot)
+```{r}
+ts.plot(y_arima, main = "Time Series ARMA(2,2) - arima.sim", ylab="Y")
+ts.plot(y_manual, main = "Time Series ARMA(2,2) - Manual", ylab="Y")
+```
+
+### ACF & PACF
+```{r}
+par(mfrow=c(2,2))
+acf(y_arima, main="ACF arima.sim")
+pacf(y_arima, main="PACF arima.sim")
+acf(y_manual, main="ACF manual")
+pacf(y_manual, main="PACF manual")
+```
+
+### EACF
+```{r}
+par(mfrow=c(1,2))
+eacf(y_arima)
+eacf(y_manual)
+```
+
+### Indentifikasi stasioneritas
+```{r}
+ar_poly <- c(1, -phi)   # 1 - φ1B - φ2B^2
+roots_ar <- polyroot(ar_poly)
+
+cat("Akar AR:", roots_ar, "\n")
+cat("Modulus akar:", Mod(roots_ar), "\n")
+
+if(all(Mod(roots_ar) > 1)){
+  cat("Proses ARMA(2,2) stasioner.\n")
+} else {
+  cat("Proses tidak stasioner.\n")
+}
+```
+
+## 3. Pembuatan scatter plot antara $Y_t$ dengan $Y_{t-k}$ dengan k = 1,2,3
+```{r}
+par(mfrow=c(1,3))
+plot(y_arima[-1], y_arima[-length(y_arima)], 
+     main="Y_t vs Y_(t-1)", xlab="Y_(t-1)", ylab="Y_t")
+plot(y_arima[-c(1,2)], y_arima[-((length(y_arima)-1):length(y_arima))], 
+     main="Y_t vs Y_(t-2)", xlab="Y_(t-2)", ylab="Y_t")
+plot(y_arima[-c(1:3)], y_arima[-((length(y_arima)-2):length(y_arima))], 
+     main="Y_t vs Y_(t-3)", xlab="Y_(t-3)", ylab="Y_t")
+```
+
+## 4. Penghitungan Autokorelasi data bangkitan dan teoritis
+### Manual
+```{r}
+acf_sample <- acf(y_arima, lag.max = 20, plot = FALSE)
+acf_sample_vec <- as.numeric(acf_sample$acf)
+```
+
+### Teoritis
+```{r}
+acf_theo <- ARMAacf(ar = phi, ma = theta, lag.max = 20)
+```
+
+### Gabungan
+```{r}
+df_acf <- data.frame(
+  lag = 0:20,
+  teoritis = acf_theo[1:(21)],
+  sampel = acf_sample_vec[1:(21)]
+)
+
+print(df_acf)
+```
+
+#### Plot perbandingan teoritis vs manual (hingga lag 10)
+```{r}
+df_acf_melt <- melt(df_acf, id.vars="lag")
+
+ggplot(df_acf_melt, aes(x=lag, y=value, color=variable, linetype=variable)) +
+  geom_line() + geom_point() +
+  labs(title="Perbandingan ACF: Teoritis vs Sampel (ARMA(2,2))",
+       y="ACF", x="Lag") +
+  theme_minimal()
+```
+
+## Interpretasi
+Pada plot tersebut, Garis merah (teoritis) menunjukkan bentuk ACF yang diharapkan dari model ARMA(2,2) dengan parameter $\phi_1$=0.5, $\phi_2$=0.2, $\theta_1$=0.4, $\theta_2$=0.6. Garis biru (sampel) adalah ACF hasil dari data simulasi 300 observasi.
+
+Secara umum, pola keduanya serupa: autokorelasi menurun seiring bertambahnya lag, dengan bentuk decay eksponensial yang khas ARMA.
+
+Pada lag 1 sampai 3, terlihat bahwa nilai ACF sampel (biru) sedikit lebih rendah dibanding teori (merah). Hal ini wajar karena estimasi ACF dari data sampel sering mengalami fluktuasi akibat ukuran sampel yang terbatas.
+
+Pada lag 6 ke atas, ACF sampel bahkan bisa bernilai negatif, sementara ACF teoritis tetap positif dan mendekati nol.
+
+Ini terjadi karena sampling variability (kesalahan acak akibat data terbatas). Jika jumlah data diperbesar (misalnya >1000), maka kurva sampel akan semakin mendekati kurva teoritis.
+
+Baik kurva teoritis maupun sampel sama-sama menuju nol ketika lag besar, sesuai dengan sifat proses ARMA yang stasioner.
+
+Implikasinya, perbedaan kecil antara ACF teoritis dan sampel tidak berarti model salah. Justru ini menunjukkan bahwa model ARMA(2,2) dengan parameter yang dipakai sudah menghasilkan data simulasi yang konsisten dengan teori. Secara umum, model ARMA(2,2) yang digunakan sudah stasioner dan sesuai dengan teori.
