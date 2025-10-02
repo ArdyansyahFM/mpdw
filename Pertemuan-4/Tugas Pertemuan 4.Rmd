@@ -350,7 +350,7 @@ Pada lag lebih tinggi (≥7), Deviasi semakin besar, beberapa nilai bahkan berfl
 
 Baik simulasi manual maupun dengan arima.sim berhasil mereplikasi sifat ACF AR(2), yaitu tail-off secara perlahan. Perbedaan dengan kurva teoritis sebagian besar akibat variasi sampel (finite sample effect), bukan karena model salah. arima.sim menghasilkan estimasi ACF yang lebih konsisten mendekati teoritis dibandingkan metode manual.
 
-Proses ARMA(2,2)
+# Proses ARMA(2,2)
 ## 1. Pembangkitan data
 ```{r}
 set.seed(040)
