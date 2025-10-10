@@ -13,8 +13,113 @@ output:
 
 # Library yang diperlukan
 ```{r setup, message=FALSE, warning=FALSE}
+library(readxl)
+library(dplyr)
 library(ggplot2)
+library(forecast)
 library(tsibble)
 library(tseries)
 library(MASS)
 ```
+
+# Baca Data
+```{r}
+data <- read_excel("E:/(1) Projects/Semester 5/Metode Peramalan Deret Waktu/MPDW/Data/Data MPDWW.xlsx")
+dataFahmi = data[541:720, ]
+head(dataFahmi)
+```
+# Plot Data
+```{r}
+# Mengubah data menjadi objek time series (ts)
+ts_Fahmi <- ts(dataFahmi$CO2, start = c(31, 1), frequency = 12)
+
+
+# Membuat Plot data Asli
+autoplot(ts_Fahmi, colour = 'darkblue') +
+  ggtitle("Plot Data Time Series CO2 (Periode 541-720)") +
+  xlab("Periode") +
+  ylab("Konsentrasi CO2") +
+  theme_bw()
+```
+Dari plot tersebut, terlihat bahwa data yang saya miliki **tidak stasioner dalam rataan, stasioner dalam ragam, dan memiliki tren naik**.
+
+# Cek rataan stasioner dengan Plot ACF
+```{r}
+Acf(ts_Fahmi, main="ACF Data CO2")
+```
+Plot ini menunjukkan bahwa data saya memiliki nilai korelasi tinggi dan **tidak stasioner** dalam rataan karena adanya tren naik.
+
+# Cek rataan stasioner dengan Uji ADF
+$H_0$ : Data tidak stasioner dalam rataan
+
+$H_1$ : Data stasioner dalam rataan
+```{r}
+tseries::adf.test(dataFahmi$CO2)
+```
+Berdasarkan uji ADF tersebut, didapat *p-value* yang lebih kecil dari 0.01 yang lebih kecil dari taraf nyata 5% sehingga tolak $H_0$ dan menandakan bahwa data **stasioner dalam rataan**.
+
+Kendati demikian, uji ADF adalah uji yang memasukkan unsur tren dalam model pengujiannya, sehingga jika suatu data memiliki tren tertentu, maka ADF akan 'mengoreksi' tren tersebut secara otomatis untuk menyatakan apakah data tersebut memiliki rataan yang tidak stasioner dan "melenceng" dari trennya. Oleh karena itu, walaupun uji ADF menyatakan bahwa data saya stasioner dalam rataan, saya lebih mempercayai *plot time series* dan *plot ACF* yang benar-benar menunjukkan bahwa **data saya tidak stasioner dalam rataan** (tidak peduli dengan trennya).
+
+# Cek ragam stasioner dengan Plot Boxcox
+
+```{r}
+index <- seq(1, 67)
+
+# Box-Cox
+bc <- boxcox(dataFahmi$CO2 ~ dataFahmi$Periode, lambda = seq(-6, 6, by = 0.01)
+)
+```
+
+```{r}
+lambda <- bc$x[which.max(bc$y)]
+lambda
+```
+
+```{r}
+# Selang kepercayaan 95% untuk lambda
+ci_lambda <- bc$x[bc$y > max(bc$y) - 0.5 * qchisq(0.95, 1)]
+
+# Batas bawah dan batas atas
+ci_lower <- min(ci_lambda)
+ci_upper <- max(ci_lambda)
+
+c(Batas_Bawah = ci_lower, Batas_Atas = ci_upper)
+```
+Gambar di atas menunjukkan nilai λ optimum (rounded value) sebesar **0.17** dan selang kepercayaan 95% nilai memiliki batas bawah **-2.18** dan batas atas **2.52**. Selang tersebut memuat nilai satu sehingga dapat dikatakan bahwa data saya **stasioner dalam ragam**.
+
+# Kesimpulan dari data
+Data saya **tidak stasioner dalam rataan, tetapi stasioner dalam ragam** pada taraf nyata 5%.
+
+# Penanganan
+## Differencing pertama
+```{r}
+# Differencing pertama pada dataFahmi
+dataFahmi_diff1 <- diff(dataFahmi$CO2, differences = 1)
+```
+### Plot hasil differencing pertama
+```{r}
+ts.plot(dataFahmi_diff1,
+        main = "Differencing pertama pada dataFahmi",
+        col = "darkblue", lwd = 2)
+```
+Plot hasil differencing (Differencing pertama pada dataFahmi) menunjukkan data sekarang berfluktuasi di sekitar nilai nol.
+
+Tren naik sudah hilang karena saya telah melakukan differencing orde 1.
+
+### Plot ACF hasil differencing pertama
+```{r}
+acf(dataFahmi_diff1)
+```
+Plot ACF menunjukkan korelasi yang turun tajam menuju nol setelah lag kecil (sekitar Lag=1 atau Lag=2). Ini mengonfirmasi bahwa tren sudah berhasil dihilangkan.
+
+### Uji ADF hasil differencing pertama
+$H_0$ : Data hasil differencing pertama tidak stasioner dalam rataan
+
+$H_1$ : Data hasil differencing pertama stasioner dalam rataan
+```{r}
+tseries::adf.test(dataFahmi_diff1)
+```
+Berdasarkan uji ADF tersebut, didapat *p-value* yang lebih kecil dari 0.01 yang lebih kecil dari taraf nyata 5% sehingga tolak $H_0$ dan menandakan bahwa data hasil differencing pertama **stasioner dalam rataan**. Hal ini sesuai dengan hasil eksplorasi menggunakan plot time series dan plot ACF terhadap data hasil differencing pertama.
+
+## Kesimpulan Hasil Differencing pertama
+Setelah dilakukan differencing pertama, **data menjadi stasioner dalam rataan dan stasioner dalam ragam** pada taraf nyata 5%.
