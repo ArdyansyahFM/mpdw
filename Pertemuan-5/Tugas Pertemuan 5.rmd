@@ -1,1 +1,20 @@
+---
+title: "Tugas Pertemuan 5"
+author: "G1401231040 Fahmi Maulana Ardyanysah"
+date: "2025-10-09"
+output: 
+  html_document:
+    theme: cerulean
+    toc: true
+    toc_float: true
+    code-fold: false
+    code-copy: true
+---
 
+# Library yang diperlukan
+```{r setup, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(tsibble)
+library(tseries)
+library(MASS)
+```
