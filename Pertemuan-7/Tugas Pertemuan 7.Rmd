@@ -214,11 +214,10 @@ comparison_table <- data.frame(
 
 comparison_table[order(comparison_table$AIC), ]
 ```
-Berdasarkan signifikansi parameter dan nilai AIC, diperoleh model ARIMA(2,1,1) dan ARIMA(2,1,2) sebagai kandidat model terbaik untuk dilakukan peramalan lebih lanjut karena seluruh parameternya signifikan dan memiliki nilai AIC yang cenderung kecil.
+Berdasarkan signifikansi parameter dan nilai AIC, diperoleh model ARIMA(2,1,1) sebagai kandidat model terbaik untuk dilakukan peramalan lebih lanjut karena seluruh parameternya signifikan dan memiliki nilai AIC yang paling kecil.
 
-## Peramalan 
-### Peramalan dengan model ARIMA(2,1,1)
-#### Uji asumsi sisaan model ARIMA(2,1,1)
+## Evaluasi model ARIMA(2,1,1)
+### Uji asumsi sisaan model ARIMA(2,1,1)
 #### Uji normalitas sisaan model ARIMA(2,1,1)
 $H_0$ : Sisaan menyebar normal
 
@@ -234,32 +233,96 @@ qqnorm(sisaan.arima211)
 qqline(sisaan.arima211, col = "darkblue", lwd = 2)
 car::qqPlot(sisaan.arima211)
 ```
-#### Uji Formal ktest
+##### Uji Formal ktest
 ```{r}
 ks.test(arima211$residuals,"pnorm") 
 ```
+Berdasarkan QQ Plot dan k-test, terdapat cukup bukti untuk menyatakan bahwa sisaan dari model ARIMA(2,1,1) tidak menyebar normal pada taraf nyata 5%.
 
-
-#### Plot sisaan terhadap periode
+#### Uji Homoskedastisitas: Plot sisaan terhadap periode model ARIMA(2,1,1)
 ```{r}
 par(mfrow=c(1,1))
 plot(c(1:length(sisaan.arima211)), sisaan.arima211, 
      main = "Sisaan vs Periode", xlab = "Indeks Periode", ylab = "Sisaan")
 ```
+Berdasarkan plot sisaan vs. periode di atas, dapat dilihat bahwa sisaan cenderung menyebar secara acak sepanjang periode. Oleh karena itu, ragam sisaan dapat bahwa model ini memenuhi asumsi ragam sisaan homogen.
 
+#### Uji independensi sisaan model ARIMA(2,1,1)
+$H_0$ : Sisaan saling bebas
 
-#### ACF dan PACF
+$H_1$ : Sisaan tidak saling bebas
+##### Plot ACF dan PACF
 ```{r}
 # ACFF dan PACF sisaan
-par(mfrow = c(2,1))
+par(mfrow = c(1,1))
 acf(sisaan.arima211)
 pacf(sisaan.arima211)
 ```
+##### Uji Box_Ljung
+```{r}
+Box.test((sisaan.arima211)^2, type = "Ljung") 
+```
+Berdasarkan plot ACF, plot PACF, dan uji Box-Ljung, tidak ada cukup bukti untuk menyatakan bahwa sisaan tidak saling bebas pada taraf nyata 5%, sehingga dapat dikatakan bahwa sisaan saling bebas pada taraf nyata 5%.
+
+### Overfitting model ARIMA(2,1,1)
+menaikkan orde AR(p) dan MA(q) dari model ARIMA(2,1,1) untuk melihat apakah terdapat model lain yang lebih baik dari model saat ini.
+
+#### Model ARIMA(3,1,1)
+```{r}
+arima311 <- Arima(DataTrain, order = c(3,1,1), method="ML")
+summary(arima311)
+lmtest::coeftest(arima311)
+```
+
+#### Model ARIMA(2,1,2)
+```{r}
+arima212 <- Arima(DataTrain, order = c(2,1,2), method="ML")
+summary(arima212)
+lmtest::coeftest(arima212)
+```
+
+#### Model ARIMA(3,1,2)
+```{r}
+arima312 <- Arima(DataTrain, order = c(3,1,2), method="ML")
+summary(arima312)
+lmtest::coeftest(arima312)
+```
+#### Perbandingan model dengan model overfit
+```{r}
+tabel_overfit <- data.frame(
+  Model = c("ARIMA(2,1,1)", "ARIMA(3,1,1)", "ARIMA(2,1,2)", "ARIMA(3,1,2)"),
+  AIC = c(arima211$aic, arima311$aic, arima212$aic, arima312$aic),
+  BIC = c(arima211$bic, arima311$bic, arima212$bic, arima312$bic)
+)
+
+tabel_overfit[order(comparison_table$AIC), ]
+```
+Dari perbandingan model ARIMA(2,1,1) dengan beberapa model overfit nya di atas, diperoleh kesimpulan bahwa model ARIMA(2,1,1) tetap merupakan model terbaik karena seluruh parameternya signifikan dan nilai AIC nya paling kecil.
 
 
-
-### Peramalan dengan model ARIMA(3,1,1)
+# Peramalan dengan model ARIMA(2,1,1)
 
 ```{r}
+nTest = n - nTrain
+ramalan <- forecast::forecast(arima211, h = nTest) 
+head(ramalan)
+```
 
+```{r}
+data.ramalan <- ramalan$mean
+plot(ramalan)
+```
+
+## Evaluasi Peramalan dengan model ARIMA(2,1,1)
+### Tabel perbandingan
+```{r}
+perbandingan<-matrix(data=c(DataTest, data.ramalan),
+                     nrow = nTest, ncol = 2)
+colnames(perbandingan)<-c("Aktual","Hasil Forecast")
+head(perbandingan)
+```
+
+### Akurasi
+```{r}
+accuracy(data.ramalan, DataTest)
 ```
