@@ -1,0 +1,311 @@
+---
+title: "UTS"
+author: "G1401231040 Fahmi Maulana Ardyanysah"
+date: "2025-10-16"
+output: 
+  html_document:
+    theme: cerulean
+    toc: true
+    toc_float: true
+---
+
+# Library yang diperlukan
+```{r setup, message=FALSE, warning=FALSE}
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(forecast)
+library(tsibble)
+library(tseries)
+library(MASS)
+library(TSA)
+library(TTR)
+library(aTSA)
+library(graphics)
+```
+
+# Persiapan Data
+## Pembacaan Data
+```{r}
+dataFahmi <- read.csv("E:/(1) Projects/Semester 5/Metode Peramalan Deret Waktu/MPDW/UTS/data_penjualan_ujian.csv")
+head(dataFahmi)
+
+# Menambahkan +40 (2 digit terakhir NIM) untuk setiap amatan pada kolom "Penjualan"
+dataFahmi$Penjualan <- dataFahmi$Penjualan + 30
+head(dataFahmi)
+
+# Mengubah data menjadi objek time series (ts)
+ts_Fahmi <- ts(dataFahmi$Penjualan)
+head(ts_Fahmi)
+```
+## Membagi data menjadi data train dan data test
+```{r}
+n <- length(ts_Fahmi)
+nTrain <- round(n * 0.80) 
+
+print(paste("Total Observasi:", n))
+print(paste("Jumlah Observasi Training (80%):", nTrain))
+
+DataTrain <- ts_Fahmi[1:nTrain]
+DataTest <- ts_Fahmi[(nTrain + 1):n]
+
+print(paste("Panjang Data Train:", length(DataTrain)))
+print(paste("Panjang Data Test:", length(DataTest)))
+
+```
+## Plot Data
+```{r}
+# Membuat Plot Data
+plot_dataFahmi <- ts_Fahmi |> 
+  as_tsibble() |> 
+  ggplot(aes(x = index, y = value)) +
+  geom_line() +
+  theme_bw() +
+  xlab("Obs") + 
+  ylab("Nilai") +
+  geom_vline(xintercept = 400, linetype = "dashed", color = "darkblue") +
+  ggtitle("Partisi Deret Waktu: Train | Test")
+
+plot_dataFahmi
+```
+Dari plot tersebut, secara kasat mata terlihat bahwa data ini **tidak stasioner dalam rataan, tidak stasioner dalam ragam, dan memiliki tren naik**.
+
+## Cek rataan data train stasioner dengan Plot ACF
+```{r}
+Acf(DataTrain, main="ACF Data Penjualan")
+```
+Plot ini menunjukkan bahwa data train saya memiliki nilai autokorelasi tinggi dan **tidak stasioner** dalam rataan. Pola ini juga menunjukkan bahwa data saya berpola tails-off
+
+## Cek rataan data train stasioner dengan Uji ADF
+$H_0$ : Data train tidak stasioner dalam rataan
+
+$H_1$ : Data train stasioner dalam rataan
+```{r}
+tseries::adf.test(DataTrain)
+```
+Berdasarkan uji ADF tersebut, didapat *p-value* 0.9325 yang lebih besar dari 0.05 sehingga tak tolak $H_0$ dan menandakan bahwa data train **tidak stasioner dalam rataan** pada taraf nyata 5%. Hasil uji ini konsisten dengan hasil eksplorasi dengan plot ACF yang menunjukkan bahwa data train tidak stasioner dalam rataan.
+
+## Cek ragam data train stasioner dengan Plot Box Cox
+
+```{r}
+index <- seq(1, 400)
+
+# Box-Cox
+bc <- boxcox(DataTrain ~ index, lambda = seq(-8, 2, by = 0.01)
+)
+```
+
+```{r}
+lambda <- bc$x[which.max(bc$y)]
+lambda
+```
+
+```{r}
+# Selang kepercayaan 95% untuk lambda
+ci_lambda <- bc$x[bc$y > max(bc$y) - 0.5 * qchisq(0.95, 1)]
+
+# Batas bawah dan batas atas
+ci_lower <- min(ci_lambda)
+ci_upper <- max(ci_lambda)
+
+c(Batas_Bawah = ci_lower, Batas_Atas = ci_upper)
+```
+Gambar di atas menunjukkan nilai λ optimum (rounded value) sebesar **-2.91** dan selang kepercayaan 95% nilai memiliki batas bawah **-3.69** dan batas atas **-2.15**. Selang tersebut tidak memuat nilai satu sehingga dapat dikatakan bahwa data train saya **tidak stasioner dalam ragam** pada taraf nyata 5%.
+
+## Kesimpulan dari data
+Data train saya **tidak stasioner dalam rataan dan tidak stasioner dalam ragam** pada taraf nyata 5%.
+
+## Penanganan ketidak stasioneran rataan pada data train
+### Differencing pertama
+```{r}
+# Differencing pertama pada DataTrain
+DataTrain_diff1 <- diff(DataTrain, differences = 1)
+```
+
+#### Plot hasil differencing pertama
+```{r}
+ts.plot(DataTrain_diff1,
+        main = "Differencing pertama pada DataTrain",
+        col = "darkblue", lwd = 2)
+```
+
+Plot hasil differencing (Differencing pertama pada DataTrain) menunjukkan data train sekarang berfluktuasi di sekitar nilai nol.
+
+Tren naik sudah hilang karena saya telah melakukan differencing orde 1.
+
+#### Plot ACF hasil differencing pertama
+```{r}
+acf(DataTrain_diff1)
+```
+Plot ACF menunjukkan korelasi yang turun tajam menuju nol setelah lag 1. Ini mengonfirmasi bahwa tren sudah berhasil dihilangkan.
+
+#### Uji ADF hasil differencing pertama
+$H_0$ : Data train hasil differencing pertama tidak stasioner dalam rataan
+
+$H_1$ : Data train hasil differencing pertama stasioner dalam rataan
+```{r}
+tseries::adf.test(DataTrain_diff1)
+```
+Berdasarkan uji ADF tersebut, didapat *p-value* yang lebih kecil dari 0.01 yang lebih kecil dari 0.05 sehingga tolak $H_0$ pada taraf nyata 5%. Hasil ini menandakan bahwa data train hasil differencing pertama telah **stasioner dalam rataan** pada taraf nyata 5%. Hal ini sesuai dengan hasil eksplorasi menggunakan plot time series dan plot ACF terhadap data train hasil differencing pertama.
+
+### Kesimpulan Hasil Differencing pertama
+Setelah dilakukan differencing pertama, **data train menjadi stasioner dalam rataan dan stasioner dalam ragam** pada taraf nyata 5%.
+
+# Permodelan ARIMA
+Selanjutnya, akan dilakukan pengidentifikasian model ARIMA tentatif yang paling sesuai untuk karakteristik data train ini.
+## Identifikasi Orde ARIMA (p,d,q)
+### Plot PACF
+```{r}
+pacf(DataTrain_diff1)
+```
+### Orde diferensiasi
+Orde diferensiasi yang dilakukan pada data train adalah 1, sehingga **d = 1**.
+
+### Plot ACF
+```{r}
+acf(DataTrain_diff1)
+```
+### Plot EACF
+```{r}
+eacf(DataTrain_diff1)
+```
+Dari plot EACF, diperoleh kandidat model ARIMA(0,1,1), ARIMA(0,1,2), dan ARIMA(1,1,2).
+
+## Estimasi Model ARIMA dan Perbandingannya
+### Model ARIMA(0,1,1)
+```{r}
+arima011 <- Arima(DataTrain, order = c(0,1,1), method="ML")
+summary(arima011)
+lmtest::coeftest(arima011)
+```
+Seluruh parameter Model ARIMA(0,1,1) signifikan, model valid.
+### Model ARIMA(0,1,2)
+```{r}
+arima012 <- Arima(DataTrain, order = c(0,1,2), method="ML")
+summary(arima012)
+lmtest::coeftest(arima012)
+```
+Parameter MA(2) Model ARIMA(0,1,2) tidak signifikan, model terlalu kompleks.
+### Model ARIMA(1,1,2)
+```{r}
+arima112 <- Arima(DataTrain, order = c(1,1,2), method="ML")
+summary(arima112)
+lmtest::coeftest(arima112)
+```
+Seluruh parameter Model ARIMA(1,1,2) signifikan, model valid.
+### Tabel perbandingan 3 model ARIMA
+```{r}
+comparison_table <- data.frame(
+  Model = c("ARIMA(0,1,1)", "ARIMA(0,1,2)", "ARIMA(1,1,2)"),
+  AIC = c(arima011$aic, arima012$aic, arima112$aic),
+  BIC = c(arima011$bic, arima012$bic, arima112$bic)
+)
+
+comparison_table[order(comparison_table$AIC), ]
+```
+Berdasarkan signifikansi parameter dan nilai AIC, diperoleh model ARIMA(1,1,2) sebagai kandidat model terbaik untuk dilakukan peramalan lebih lanjut karena seluruh parameternya signifikan dan memiliki nilai AIC yang paling kecil.
+
+## Evaluasi model ARIMA(1,1,2)
+### Uji asumsi sisaan model ARIMA(1,1,2)
+#### Uji normalitas sisaan model ARIMA(1,1,2)
+$H_0$ : Sisaan menyebar normal
+
+$H_1$ : Sisaan tidak menyebar normal
+##### QQ Plot sisaan
+```{r}
+#Eksplorasi
+sisaan.arima112 <- arima112$residuals
+
+par(mfrow=c(2,3))
+
+qqnorm(sisaan.arima112)
+qqline(sisaan.arima112, col = "darkblue", lwd = 2)
+car::qqPlot(sisaan.arima112)
+```
+
+##### Uji Formal ktest
+```{r}
+ks.test(arima112$residuals,"pnorm") 
+```
+Berdasarkan QQ Plot dan k-test, terdapat cukup bukti untuk menyatakan bahwa sisaan dari model ARIMA(1,1,2) tidak menyebar normal pada taraf nyata 5%.
+#### Uji Homoskedastisitas: Plot sisaan terhadap periode model ARIMA(2,1,1)
+```{r}
+par(mfrow=c(1,1))
+plot(c(1:length(sisaan.arima112)), sisaan.arima112, 
+     main = "Sisaan vs Periode", xlab = "Indeks Periode", ylab = "Sisaan")
+```
+Berdasarkan plot sisaan vs. periode di atas, dapat dilihat bahwa sisaan cenderung menyebar secara acak sepanjang periode. Oleh karena itu, ragam sisaan dapat bahwa model ini memenuhi asumsi ragam sisaan homogen.
+#### Uji independensi sisaan model ARIMA(1,1,2)
+$H_0$ : Sisaan saling bebas
+
+$H_1$ : Sisaan tidak saling bebas
+##### Plot ACF dan PACF
+```{r}
+# ACFF dan PACF sisaan
+par(mfrow = c(1,1))
+acf(sisaan.arima112)
+pacf(sisaan.arima112)
+```
+##### Uji Box_Ljung
+```{r}
+Box.test((sisaan.arima112)^2, type = "Ljung") 
+```
+Berdasarkan plot ACF, plot PACF, dan uji Box-Ljung, tidak ada cukup bukti untuk menyatakan bahwa sisaan tidak saling bebas pada taraf nyata 5%, sehingga dapat dikatakan bahwa sisaan saling bebas pada taraf nyata 5%.
+
+# Peramalan dengan model ARIMA(1,1,2)
+
+```{r}
+nTest = n - nTrain
+ramalan <- forecast::forecast(arima112, h = nTest) 
+head(ramalan)
+```
+```{r}
+data.ramalan <- ramalan$mean
+plot(ramalan)
+```
+## Evaluasi Peramalan dengan model ARIMA(1,1,2)
+### Tabel perbandingan
+```{r}
+perbandingan<-matrix(data=c(DataTest, data.ramalan),
+                     nrow = nTest, ncol = 2)
+colnames(perbandingan)<-c("Aktual","Hasil Forecast")
+head(perbandingan)
+```
+Dari peramalan, diperoleh data ramalan yang melebar hingga
+### Akurasi
+```{r}
+accuracy(data.ramalan, DataTest)
+```
+# Peramalan untuk 30 Hari ke depan
+```{r}
+# Tentukan horizon peramalan
+h_future <- 30 
+
+# Lakukan peramalan 30 periode ke depan
+final_forecast <- forecast::forecast(arima112, h = h_future)
+
+# Tampilkan hasil peramalan
+head(final_forecast)
+```
+## Visualisasi hasil peramalan
+```{r}
+# Plot seluruh data ditambah peramalan 30 periode
+plot(final_forecast, 
+     main = paste("Peramalan 30 Periode ke Depan dengan ARIMA(2, 1, 1)"),
+     xlab = "Hari",
+     ylab = "Permintaan harian")
+
+# Tambahkan garis vertikal pada batas data terakhir
+abline(v = length(ts_Fahmi) + 1, col = "red", lty = 2, lwd = 2)
+text(x = length(ts_Fahmi) + 5, y = max(ts_Fahmi), labels = "Masa Depan", col = "red")
+
+# Tampilkan rincian Selang Kepercayaan (PI)
+print("Selang Kepercayaan 95% untuk 30 periode peramalan:")
+print(tail(final_forecast$upper, 1))
+print(tail(final_forecast$lower, 1))
+```
+# Kesimpulan dari hasil peramalan
+Berdasarkan hasil peramalan, saya menyarankan agar perusahaan menyiapkan 244 kg 'Flores Fajar Blend'
+
+
+
